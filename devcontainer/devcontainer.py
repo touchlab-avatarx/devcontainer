@@ -24,7 +24,7 @@ import hashlib
 
 def devcontainer():
     '''Launch the devcontainer in current directory.'''
-    
+
     if not os.path.isdir('.devcontainer'):
         raise Exception('No .devcontainer found')
 
@@ -38,33 +38,36 @@ def devcontainer():
         # it here.
         devcontainer = jstyleson.loads(f.read())
 
-    
+
     parser = argparse.ArgumentParser(description='devcontainer')
     parser.add_argument('entrypoint', nargs='?',
                         help='Optional entrypoint')
 
     args = parser.parse_args()
-    
+
     if REMOTE_USER := devcontainer.get('remoteUser', []):
         REMOTE_USER = ['-u', REMOTE_USER]
-   
+
     PORTS = []
     for port in devcontainer.get('forwardPorts', []):
         PORTS += ['-p']
         PORTS += [f'{port}:{port}']
 
     ENVS = []
-    for key,val in devcontainer.get('remoteEnv', {}).items():
+    for key,val in devcontainer.get('containerEnv', {}).items():
+        if val.startswith("${localEnv:") and val.endswith("}"):
+            name = val[11:-1]
+            val = os.environ[name]
         ENVS += ['-e']
-        ENVS += [f'{key}="{val}"']
+        ENVS += [f'{key}={val}']
 
-    ENTRYPOINT = args.entrypoint or ''
-    
+    ENTRYPOINT = args.entrypoint or '/bin/bash'
+
     # local directory
     WORKSPACE = os.getcwd()
     # where to mount it remotely
-    WORK_DIR = devcontainer.get('workspaceFolder', f'/workspaces/{os.path.split(WORKSPACE)[-1]}')
-    
+    WORK_DIR = devcontainer.get('workspaceFolder', f'/{os.path.split(WORKSPACE)[-1]}')
+
     if ws := devcontainer.get('workspaceMount', None):
         ws = ws.replace('${localWorkspaceFolder}', WORKSPACE)
         MOUNT = ['--mount', ws]
@@ -72,37 +75,42 @@ def devcontainer():
         MOUNT = ['--mount', f'type=bind,source={WORKSPACE},target={WORK_DIR}']
 
     # This is a path relative to .devcontainer I think.
-    DOCKERFILE = devcontainer.get('build', {}).get('dockerfile', None)
+    DOCKERFILE = devcontainer.get('dockerFile', None)
 
     if DOCKERFILE is None:
         DOCKERIMAGE = devcontainer.get('image', None)
 
     ARGS = ' '.join([f'--build-arg {key}="{val}"' for key, val in devcontainer.get('build', {}).get('args', {}).items()])
 
+    run_args = devcontainer.get('runArgs', [])
+    for i in range(len(run_args)):
+        if run_args[i].find(" ") >= 0:
+            run_args[i-1] = f"{run_args[i-1]}={run_args[i]}"
+            run_args[i] = ""
+
+    RUNARGS = run_args
 
     if DOCKERFILE:
         # Build it. we use the md5 hash of the dockerfile as a name.
         TAG = hashlib.md5(open(f'.devcontainer/{DOCKERFILE}', 'rb').read()).hexdigest()
-        subprocess.check_output(f'docker build -t {TAG} -f .devcontainer/{DOCKERFILE} {ARGS} .',
+        subprocess.check_output(f'docker build -t {TAG} -f .devcontainer/{DOCKERFILE} {ARGS} .devcontainer',
                                 shell=True)
         # filter out empty strings
-        cmd = [arg for arg in ['/usr/local/bin/docker', 'docker', 'run', '-it',
-                               *REMOTE_USER, *PORTS, *ENVS, *MOUNT, '-w', WORK_DIR, TAG, ENTRYPOINT]
-               if arg]
+        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it',
+                               *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w',
+                               WORK_DIR, TAG, "/bin/bash", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
 
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
         print(' '.join(cmd))
         os.execl(*cmd)
 
     elif DOCKERIMAGE:
-        cmd = [arg for arg in ['/usr/local/bin/docker', 'docker', 'run', '-it',
-                               *REMOTE_USER, *PORTS, *ENVS, *MOUNT, '-w', WORK_DIR,
-                               DOCKERIMAGE, ENTRYPOINT] if arg]
+        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it',
+                               *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
+                               DOCKERIMAGE, "/bin/bash", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
         print(' '.join(cmd))
         os.execl(*cmd)
 
-
     else:
         raise Exception('No Docker image or file found.')
-    
