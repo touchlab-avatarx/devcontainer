@@ -5,7 +5,7 @@ devcontainer - Python script for launching devcontainers
 
 `devcontainer` is not on pypi yet. You can install it like this.
 
-> pip install git+git://github.com/jkitchin/devcontainer
+> pip install git+https://github.com/touchlab-avatarx/devcontainer
 
 Installation provides one shell command `devcontainer` in your path.
 
