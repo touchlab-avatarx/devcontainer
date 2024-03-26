@@ -96,7 +96,7 @@ def devcontainer():
         subprocess.check_output(f'docker build -t {TAG} -f .devcontainer/{DOCKERFILE} {ARGS} .devcontainer',
                                 shell=True)
         # filter out empty strings
-        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it',
+        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm',
                                *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w',
                                WORK_DIR, TAG, "/bin/bash", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
 
@@ -105,7 +105,7 @@ def devcontainer():
         os.execl(*cmd)
 
     elif DOCKERIMAGE:
-        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it',
+        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm',
                                *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
                                DOCKERIMAGE, "/bin/bash", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
