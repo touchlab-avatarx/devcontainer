@@ -20,7 +20,18 @@ import jstyleson
 import subprocess
 import sys
 import hashlib
+import re
 
+def substitute_env(val):
+    # Format variables
+    val=val.replace("${localEnv:","{")
+    # Replace defined variables
+    for key, value in dict(os.environ).items():
+         if val.find("{"+key+"}") >= 0:
+             val=val.replace("{"+key+"}", value)
+    # Remove undefined variables
+    val = re.sub(r"\{[^}]*\}", "", val)
+    return val
 
 def devcontainer():
     '''Launch the devcontainer in current directory.'''
@@ -55,11 +66,8 @@ def devcontainer():
 
     ENVS = []
     for key,val in devcontainer.get('containerEnv', {}).items():
-        if val.startswith("${localEnv:") and val.endswith("}"):
-            name = val[11:-1]
-            val = os.environ[name]
         ENVS += ['-e']
-        ENVS += [f'{key}={val}']
+        ENVS += [f'{key}={substitute_env(val)}']
 
     ENTRYPOINT = args.entrypoint or '/bin/bash'
 
@@ -87,6 +95,10 @@ def devcontainer():
         if run_args[i].find(" ") >= 0:
             run_args[i-1] = f"{run_args[i-1]}={run_args[i]}"
             run_args[i] = ""
+
+    # Substitute env vars
+    for i in range(len(run_args)):
+        run_args[i] = substitute_env(run_args[i])
 
     RUNARGS = run_args
 
