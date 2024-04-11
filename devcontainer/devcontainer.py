@@ -110,7 +110,7 @@ def devcontainer():
         # filter out empty strings
         cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm',
                                *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w',
-                               WORK_DIR, TAG, "/bin/bash", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
+                               WORK_DIR, TAG, "/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
 
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
         print(' '.join(cmd))
@@ -119,7 +119,7 @@ def devcontainer():
     elif DOCKERIMAGE:
         cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm',
                                *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
-                               DOCKERIMAGE, "/bin/bash", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
+                               DOCKERIMAGE, "/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
         print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
         print(' '.join(cmd))
         os.execl(*cmd)
