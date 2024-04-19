@@ -21,20 +21,43 @@ import subprocess
 import sys
 import hashlib
 import re
+import signal
+import asyncio
+
+container_name = ''
+
 
 def substitute_env(val):
     # Format variables
-    val=val.replace("${localEnv:","{")
+    val = val.replace("${localEnv:", "{")
     # Replace defined variables
     for key, value in dict(os.environ).items():
-         if val.find("{"+key+"}") >= 0:
-             val=val.replace("{"+key+"}", value)
+        if val.find("{"+key+"}") >= 0:
+            val = val.replace("{"+key+"}", value)
     # Remove undefined variables
     val = re.sub(r"\{[^}]*\}", "", val)
     return val
 
+
+def stop():
+    global container_name
+    print("stopping")
+    subprocess.Popen(['docker', 'container', 'kill', f'{container_name}'])
+
+
 def devcontainer():
+    asyncio.run(main())
+
+
+async def main():
+    global container_name
     '''Launch the devcontainer in current directory.'''
+
+    pid = os.getpid()
+
+    signal.signal(signal.SIGINT, lambda signal, frame: stop())
+    signal.signal(signal.SIGTERM, lambda signal, frame: stop())
+    signal.signal(signal.SIGQUIT, lambda signal, frame: stop())
 
     if not os.path.isdir('.devcontainer'):
         raise Exception('No .devcontainer found')
@@ -48,7 +71,6 @@ def devcontainer():
         # allows trailing commas. jstyleson is able to handle these, so we use
         # it here.
         devcontainer = jstyleson.loads(f.read())
-
 
     parser = argparse.ArgumentParser(description='devcontainer')
     parser.add_argument('entrypoint', nargs='?',
@@ -65,7 +87,7 @@ def devcontainer():
         PORTS += [f'{port}:{port}']
 
     ENVS = []
-    for key,val in devcontainer.get('containerEnv', {}).items():
+    for key, val in devcontainer.get('containerEnv', {}).items():
         ENVS += ['-e']
         ENVS += [f'{key}={substitute_env(val)}']
 
@@ -74,7 +96,8 @@ def devcontainer():
     # local directory
     WORKSPACE = os.getcwd()
     # where to mount it remotely
-    WORK_DIR = devcontainer.get('workspaceFolder', f'/{os.path.split(WORKSPACE)[-1]}')
+    WORK_DIR = devcontainer.get(
+        'workspaceFolder', f'/{os.path.split(WORKSPACE)[-1]}')
 
     if ws := devcontainer.get('workspaceMount', None):
         ws = ws.replace('${localWorkspaceFolder}', WORKSPACE)
@@ -88,7 +111,8 @@ def devcontainer():
     if DOCKERFILE is None:
         DOCKERIMAGE = devcontainer.get('image', None)
 
-    ARGS = ' '.join([f'--build-arg {key}="{val}"' for key, val in devcontainer.get('build', {}).get('args', {}).items()])
+    ARGS = ' '.join([f'--build-arg {key}="{val}"' for key,
+                    val in devcontainer.get('build', {}).get('args', {}).items()])
 
     run_args = devcontainer.get('runArgs', [])
     for i in range(len(run_args)):
@@ -101,28 +125,32 @@ def devcontainer():
         run_args[i] = substitute_env(run_args[i])
 
     RUNARGS = run_args
+    container_name = f"devcontainer-{pid}"
 
     if DOCKERFILE:
         # Build it. we use the md5 hash of the dockerfile as a name.
-        TAG = hashlib.md5(open(f'.devcontainer/{DOCKERFILE}', 'rb').read()).hexdigest()
+        TAG = hashlib.md5(
+            open(f'.devcontainer/{DOCKERFILE}', 'rb').read()).hexdigest()
         subprocess.check_output(f'docker build -t {TAG} -f .devcontainer/{DOCKERFILE} {ARGS} .devcontainer',
-                                shell=True)
+                                shell=True, stderr=subprocess.PIPE)
         # filter out empty strings
-        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm',
-                               *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w',
-                               WORK_DIR, TAG, "/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
+        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm', "--pid=host", "--stop-signal=SIGKILL", '--name', container_name,
+                               *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
+                               TAG, f"/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
 
-        print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
-        print(' '.join(cmd))
-        os.execl(*cmd)
+        print(
+            f'Mounting local {WORKSPACE} in {WORK_DIR} in "{container_name}"')
+        process = await asyncio.create_subprocess_exec(cmd[1], *cmd[2:])
+        await process.wait()
 
     elif DOCKERIMAGE:
-        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm',
+        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm', "--pid=host", "--stop-signal=SIGTERM", '--name', container_name,
                                *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
                                DOCKERIMAGE, "/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
-        print(f'Mounting local {WORKSPACE} in {WORK_DIR} in your devcontainer.')
-        print(' '.join(cmd))
-        os.execl(*cmd)
+        print(
+            f'Mounting local {WORKSPACE} in {WORK_DIR} in "{container_name}"')
+        process = await asyncio.create_subprocess_exec(cmd[1], *cmd[2:])
+        await process.wait()
 
     else:
         raise Exception('No Docker image or file found.')
