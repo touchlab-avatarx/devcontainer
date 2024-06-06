@@ -25,3 +25,22 @@ In a directory that has a .devcontainer directory you simply run `devcontainer` 
 
 The devcontainer.json options that are supported are mainly driven by the ones I have used and can test in some way. Please file an issue at https://github.com/jkitchin/devcontainer/issues, or create a pull request for new features.
 
+## Example
+
+If your docker location and file structure is:
+
+home/docker/workspaces (the .devcontainer file is in the workspaces directory)
+```
+cd home/docker/workspaces
+```
+
+To launch rviz2 you would run the following command
+```
+devcontainer "rviz2"
+```
+or, for a ROS2 launch file
+```
+devcontainer "ros2 launch <package_name> <launch_file_name>"
+```
+
+
