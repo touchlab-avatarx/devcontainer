@@ -1,4 +1,4 @@
-devcontainer - Python script for launching devcontainers
+devcontainer CLI - Python script for launching devcontainers
 --------------------------------------------------------
 
 # Installation
