@@ -150,7 +150,7 @@ async def main():
 
         # filter out empty strings
         cmd = [arg for arg in
-               ['docker', 'run', '-it', '--rm', "--pid=host", "--stop-signal=SIGKILL", '--name', container_name,
+               ['/usr/bin/docker', 'docker', 'run', '-it', '--rm', "--pid=host", "--stop-signal=SIGKILL", '--name', container_name,
                 *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
                 TAG, "/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
 
