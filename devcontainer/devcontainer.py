@@ -48,6 +48,8 @@ def stop():
 def devcontainer():
     asyncio.run(main())
 
+def strip_latest(tag):
+    return tag if not tag.endswith(":latest") else tag.split(":")[0]
 
 async def main():
     global container_name
@@ -131,12 +133,26 @@ async def main():
         # Build it. we use the md5 hash of the dockerfile as a name.
         TAG = hashlib.md5(
             open(f'.devcontainer/{DOCKERFILE}', 'rb').read()).hexdigest()
-        subprocess.check_output(f'docker build -t {TAG} -f .devcontainer/{DOCKERFILE} {ARGS} .devcontainer',
-                                shell=True, stderr=subprocess.PIPE)
+
+        # Check if the image with the computed TAG already exists
+        existing_images = subprocess.check_output(
+            "docker images --format '{{.Repository}}:{{.Tag}}'", shell=True).decode().splitlines()
+
+        existing_images = [strip_latest(image) for image in existing_images]
+
+        if TAG not in existing_images:
+            print(f"Image with TAG {TAG} not found, building the image...")
+            subprocess.check_output(
+                f'docker build -t {TAG} -f .devcontainer/{DOCKERFILE} {ARGS} .devcontainer',
+                shell=True, stderr=subprocess.PIPE)
+        else:
+            print(f"Using existing image with TAG {TAG}")
+
         # filter out empty strings
-        cmd = [arg for arg in ['/usr/bin/docker', 'docker', 'run', '-it', '--rm', "--pid=host", "--stop-signal=SIGKILL", '--name', container_name,
-                               *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
-                               TAG, f"/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
+        cmd = [arg for arg in
+               ['/usr/bin/docker', 'docker', 'run', '-it', '--rm', "--pid=host", "--stop-signal=SIGKILL", '--name', container_name,
+                *REMOTE_USER, *PORTS, *ENVS, *RUNARGS, *MOUNT, '-w', WORK_DIR,
+                TAG, "/bin/bash", "-i", "-c", f"source ~/.bashrc;{ENTRYPOINT}"] if arg]
 
         print(
             f'Mounting local {WORKSPACE} in {WORK_DIR} in "{container_name}"')
