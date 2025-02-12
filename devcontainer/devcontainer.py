@@ -28,15 +28,34 @@ container_name = ''
 
 
 def substitute_env(val):
+    ret = False
     # Format variables
-    val = val.replace("${localEnv:", "{")
+    val=val.replace("${localEnv:","{")
+    env : dict = dict(os.environ)
+
+    # Set default value
+    default_val : re.Match = re.match(r"\{[^}]*\}", val, )
+    if (default_val is not None):
+        var : str = default_val.string[1:-1]
+        idx = var.find(":")
+        if idx > 0:
+            key = var[0:idx]
+            value = var[idx+1:]
+            if key in env:
+                val=val.replace(var, key)
+            else:
+                val=val.replace("{"+var+"}", f"{value}")
+            ret = True
+
     # Replace defined variables
-    for key, value in dict(os.environ).items():
-        if val.find("{"+key+"}") >= 0:
-            val = val.replace("{"+key+"}", value)
+    for key, value in env.items():
+         if val.find("{"+key+"}") >= 0:
+             val=val.replace("{"+key+"}", value)
+             ret = True
+
     # Remove undefined variables
     val = re.sub(r"\{[^}]*\}", "", val)
-    return val
+    return val, ret
 
 
 def stop():
@@ -91,7 +110,8 @@ async def main():
     ENVS = []
     for key, val in devcontainer.get('containerEnv', {}).items():
         ENVS += ['-e']
-        ENVS += [f'{key}={substitute_env(val)}']
+        val, _ = substitute_env(val)
+        ENVS += [f'{key}={val}']
 
     ENTRYPOINT = args.entrypoint or '/bin/bash'
 
@@ -117,14 +137,13 @@ async def main():
                     val in devcontainer.get('build', {}).get('args', {}).items()])
 
     run_args = devcontainer.get('runArgs', [])
-    for i in range(len(run_args)):
-        if run_args[i].find(" ") >= 0:
-            run_args[i-1] = f"{run_args[i-1]}={run_args[i]}"
-            run_args[i] = ""
 
     # Substitute env vars
     for i in range(len(run_args)):
-        run_args[i] = substitute_env(run_args[i])
+        run_args[i], is_sanitised = substitute_env(run_args[i])
+        if i > 0 and not is_sanitised and run_args[i].find(" ") >= 0:
+            run_args[i-1] = f"{run_args[i-1]}={run_args[i]}"
+            run_args[i] = ""
 
     RUNARGS = run_args
     container_name = f"devcontainer-{pid}"
